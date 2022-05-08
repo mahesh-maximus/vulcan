@@ -1,0 +1,51 @@
+# Config
+git config --global user.email "abc@server.com"
+
+#Stages all changes
+git add -A  >stages all changes
+git add .   >stages new files and modifications, without deletions (on the current directory and its subdirectories).
+git add -u  >stages modifications and deletions, without new files
+git add -A && git commit -m "Your Message"
+git config --global alias.coa "!git add -A && git commit -m"
+
+# Create submodule
+git submodule add https://github.com/firecracker-microvm/firecracker.git
+
+# Push to Github
+ git push origin main
+
+ # Git hub Access Tocken
+https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token
+
+#Build and Run
+sudo docker-compose up
+sudo docker exec -it devcontainer_mytype_1  bash
+
+#Clear Docker images
+sudo docker-compose rm -f
+sudo docker system prune -a
+
+# Node.js Binary Distributions
+https://github.com/nodesource/distributions/blob/master/README.md
+https://github.com/nodesource/distributions/issues/1359
+
+git reset --hard # removes staged and working directory changes
+
+## !! be very careful with these !!
+## you may end up deleting what you don't want to
+## read comments and manual.
+git clean -f -d # remove untracked
+git clean -f -x -d # CAUTION: as above but removes ignored files like config.
+git clean -fxd :/ # CAUTION: as above, but cleans untracked and ignored files through the entire repo (without :/, the operation affects only the current directory)
+
+
+# Remove submodule
+Remove required section from .gitmodules
+git rm -r --cached cpython
+
+
+# Delete Directories and al sub dirs and files by force
+$ sudo rm -rf dir-name
+
+#It will be available to all
+chmod -R 777 dir-name/
