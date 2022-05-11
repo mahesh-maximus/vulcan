@@ -1,0 +1,3 @@
+[submodule "firecracker"]
+	path = firecracker
+	url = https://github.com/mahesh-maximus/firecracker.git
