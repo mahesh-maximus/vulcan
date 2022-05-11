@@ -1,3 +1,1 @@
-[submodule "firecracker"]
-	path = firecracker
-	url = https://github.com/firecracker-microvm/firecracker.git
+
