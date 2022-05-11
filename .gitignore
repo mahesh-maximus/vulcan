@@ -102,3 +102,7 @@ dist
 
 # TernJS port file
 .tern-port
+samples/run-firecracker/iptables.rules.old
+iptables.rules.old
+samples/run-firecracker/getting-started.md/hello-rootfs.ext4
+samples/run-firecracker/getting-started.md/hello-vmlinux.bin
