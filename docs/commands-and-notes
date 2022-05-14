@@ -49,3 +49,24 @@ $ sudo rm -rf dir-name
 
 #It will be available to all
 chmod -R 777 dir-name/
+
+main()
+*cmd_build()
+[Firecracker devtool] Starting build (debug, musl) ...
+
+
+*Build Firecracker --user 1000:1000         --workdir /firecracker                  --         cargo build             --target-dir /firecracker/build/cargo_target             --target x86_64-unknown-linux-musl
+
+*run_devctr() - --user 1000:1000 --workdir /firecracker -- cargo build --target-dir /firecracker/build/cargo_target --target x86_64-unknown-linux-musl
+
+*docker_args - --user 1000:1000 --workdir /firecracker -i -t
+*ctr_args - public.ecr.aws/firecracker/fcuvm:v35 cargo build --target-dir /firecracker/build/cargo_target --target x86_64-unknown-linux-musl
+
+docker run --user 1000:1000 --workdir /firecracker -i -t         --rm         --volume /dev:/dev         --volume /home/mahesh/git/vulcan/firecracker:/firecracker:z         --env OPT_LOCAL_IMAGES_PATH=/firecracker/build         --env PYTHONDONTWRITEBYTECODE=1         public.ecr.aws/firecracker/fcuvm:v35 cargo build --target-dir /firecracker/build/cargo_target --target x86_64-unknown-linux-musl
+
+==========================================================================================
+main()
+cmd_build_devctr()
+docker build -t public.ecr.aws/firecracker/fcuvm -f /home/mahesh/git/vulcan/firecracker/tools/devctr/Dockerfile.x86_64 --build-arg TMP_POETRY_DIR=/tmp/poetry .
+
+

@@ -1,5 +1,31 @@
+# Development container image (without tag)
+DEVCTR_IMAGE_NO_TAG="public.mahesh/mahesh-maximus/vulcan"
+
+# Development container tag
+DEVCTR_IMAGE_TAG="v1"
+
+# Development container image (name:tag)
+# This should be updated whenever we upgrade the development container.
+# (Yet another step on our way to reproducible builds.)
+DEVCTR_IMAGE="${DEVCTR_IMAGE_NO_TAG}:${DEVCTR_IMAGE_TAG}"
+
 # Naming things is hard
 MY_NAME="Vulcan $(basename "$0")"
+
+# Full path to the Valcan tools dir on the host.
+VALCAN_TOOLS_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# Full path to the Valcan sources dir on the host.
+VALCAN_ROOT_DIR=$(cd "${VALCAN_TOOLS_DIR}/.." && pwd)
+
+# Full path to the build dir on the host.
+VALCAN_C_BUILD_DIR="${VALCAN_ROOT_DIR}/build"
+
+# Full path to devctr dir on the host.
+VALCAN_DEVCTR_DIR="${VALCAN_ROOT_DIR}/tools/devctr"
+
+# Path to the linux kernel directory on the host.
+KERNEL_DIR="${VALCAN_ROOT_DIR}/.kernel"
 
 # Send a decorated message to stdout, followed by a new line
 #
@@ -52,13 +78,334 @@ ok_or_die() {
     [[ $code -eq 0 ]] || die -c $code "$@"
 }
 
+# Make sure the build/ dirs are available. Exit if we can't create them.
+# Upon returning from this call, the caller can be certain the build/ dirs exist.
+#
+ensure_build_dir() {
+    for dir in "$FC_BUILD_DIR" "$CARGO_TARGET_DIR" \
+               "$CARGO_REGISTRY_DIR" "$CARGO_GIT_REGISTRY_DIR"; do
+        create_dir "$dir"
+    done
+}
+
+# Check if Docker is available and exit if it's not.
+# Upon returning from this call, the caller can be certain Docker is available.
+#
+ensure_docker() {
+    NEWLINE=$'\n'
+    output=$(which docker 2>&1)
+    ok_or_die "Docker not found. Aborting." \
+        "Please make sure you have Docker (http://docker.com) installed" \
+        "and properly configured.${NEWLINE}" \
+        "Error: $?, command output: ${output}"
+
+    output=$(docker ps 2>&1)
+    ok_or_die "Error accessing Docker. Please make sure the Docker daemon" \
+        "is running and that you are part of the docker group.${NEWLINE}" \
+        "Error: $?, command output: ${output}${NEWLINE}" \
+        "For more information, see" \
+        "https://docs.docker.com/install/linux/linux-postinstall/"
+}
+
+# Attempt to download our Docker image. Exit if that fails.
+# Upon returning from this call, the caller can be certain our Docker image is
+# available on this system.
+#
+ensure_devctr() {
+
+    # We depend on having Docker present.
+    ensure_docker
+
+    # Check if we have the container image available locally. Attempt to
+    # download it, if we don't.
+    [[ $(docker images -q "$DEVCTR_IMAGE" | wc -l) -gt 0 ]] || {
+        say "About to pull docker image $DEVCTR_IMAGE"
+        get_user_confirmation || die "Aborted."
+
+        # Run docker pull 5 times in case it fails - sleep 3 seconds
+        # between attempts
+        retry_cmd "docker pull $DEVCTR_IMAGE" 5 3
+
+        ok_or_die "Error pulling docker image. Aborting."
+    }
+}
+
+# Builds the development container from its Dockerfile.
+#
+cmd_build_devctr() {
+    echo "cmd_build_devctr()"
+    arch=$(uname -m)
+    docker_file_name="Dockerfile.$arch"
+    build_args="--build-arg TMP_POETRY_DIR=$CTR_POETRY_TMP_DIR"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            "-h"|"--help")      { cmd_help; exit 1; } ;;
+            "-n"|"--no-python-package-upgrade")
+                shift
+                build_args="$build_args --build-arg POETRY_LOCK_PATH=tools/devctr/poetry.lock"
+                ;;
+            "--")               { shift; break;     } ;;
+            *)
+                die "Unknown argument: $1. Please use --help for help."
+            ;;
+        esac
+        shift
+    done
+
+echo "docker build -t $DEVCTR_IMAGE_NO_TAG -f $VALCAN_DEVCTR_DIR/$docker_file_name ."
+
+    docker build -t "$DEVCTR_IMAGE_NO_TAG" -f "$VALCAN_DEVCTR_DIR/$docker_file_name" .
+
+}
+
+# Helper function to run the dev container.
+# Usage: run_devctr <docker args> -- <container args>
+# Example: run_devctr --privileged -- bash -c "echo 'hello world'"
+run_devctr() {
+    docker_args=()
+    ctr_args=()
+    docker_args_done=false
+    while [[ $# -gt 0 ]]; do
+        [[ "$1" = "--" ]] && {
+            docker_args_done=true
+            shift
+            continue
+        }
+        [[ $docker_args_done = true ]] && ctr_args+=("$1") || docker_args+=("$1")
+        shift
+    done
+
+    # If we're running in a terminal, pass the terminal to Docker and run
+    # the container interactively
+    [[ -t 0 ]] && docker_args+=("-i")
+    [[ -t 1 ]] && docker_args+=("-t")
+
+    # Try to pass these environments from host into container for network proxies
+    proxies=(http_proxy HTTP_PROXY https_proxy HTTPS_PROXY no_proxy NO_PROXY)
+    for i in "${proxies[@]}"; do
+        if [[ ! -z ${!i} ]]; then
+            docker_args+=("--env") && docker_args+=("$i=${!i}")
+        fi
+    done
+
+    # Finally, run the dev container
+    # Use 'z' on the --volume parameter for docker to automatically relabel the
+    # content and allow sharing between containers.
+    docker run "${docker_args[@]}" \
+        --rm \
+        --volume /dev:/dev \
+        --volume "$FC_ROOT_DIR:$CTR_FC_ROOT_DIR:z" \
+        --env OPT_LOCAL_IMAGES_PATH="$(dirname "$CTR_MICROVM_IMAGES_DIR")" \
+        --env PYTHONDONTWRITEBYTECODE=1 \
+        "$DEVCTR_IMAGE" "${ctr_args[@]}"
+}
+
+# `$0 build` - build Firecracker
+# Please see `$0 help` for more information.
+#
+cmd_build() {
+
+    # By default, we'll build the debug binaries.
+    profile="debug"
+    libc="musl"
+
+    # Check prerequisites
+    ensure_devctr
+    # ensure_build_dir
+
+    say "Starting build ($profile, $libc) ..."
+
+
+
+
+    # Run the cargo build process inside the container.
+    # We don't need any special privileges for the build phase, so we run the
+    # container as the current user/group.
+
+    # Build Firecracker.
+    run_devctr \
+        --user "$(id -u):$(id -g)" \
+        --workdir "$CTR_FC_ROOT_DIR" \
+        ${extra_args} \
+        -- \
+        cargo build \
+            --target-dir "$CTR_CARGO_TARGET_DIR" \
+            "${cargo_args[@]}"
+    ret=$?
+
+    [ $ret -ne 0 ] && return $ret
+
+    # Build jailer only in case of musl for compatibility reasons.
+    if [ "$libc" == "musl" ];then
+        say "No musl to build."
+
+    fi
+
+    ret=$?
+
+    # If `cargo build` was successful, output a message.
+    [ $ret -eq 0 ] && {
+        cargo_bin_dir="$CARGO_TARGET_DIR/$target/$profile"
+        seccompiler_bin_dir="$CARGO_SECCOMPILER_TARGET_DIR/$target/$profile"
+        rebase_snap_bin_dir="$CARGO_REBASE_SNAP_TARGET_DIR/$target/$profile"
+
+        # Seccompiler has a different build folder, we need to output two
+        # messages.
+        say "Build successful."
+        say "Firecracker and Jailer binaries placed under $cargo_bin_dir"
+        say "Seccompiler-bin binary placed under $seccompiler_bin_dir"
+        say "Rebase_snap binary placed under $rebase_snap_bin_dir"
+    }
+
+    return $ret
+}
+
+cmd_help() {
+    echo ""
+    echo "Firecracker $(basename $0)"
+    echo "Usage: $(basename $0) [<args>] <command> [<command args>]"
+    echo ""
+    echo "Global arguments"
+    echo "    -y, --unattended         Run unattended. Assume the user would always"
+    echo "                             answer \"yes\" to any confirmation prompt."
+    echo ""
+    echo "Available commands:"
+    echo ""
+    echo "    build [--debug|--release] [-l|--libc musl|gnu] [-- [<cargo args>]]"
+    echo "        Build the Firecracker binaries."
+    echo "        Firecracker is built using the Rust build system (cargo). All arguments after --"
+    echo "        will be passed through to cargo."
+    echo "        --debug               Build the debug binaries. This is the default."
+    echo "        --release             Build the release binaries."
+    echo "        -l, --libc musl|gnu   Choose the libc flavor against which Firecracker will"
+    echo "                              be linked. Default is musl."
+    echo "        --ssh-keys            Provide the paths to the public and private SSH keys on the host"
+    echo "                              (in this particular order) required for the git authentication."
+    echo "                              It is mandatory that both keys are specified."
+    echo ""
+    echo "    build_devctr [--no-python-package-update]"
+    echo "        Builds the development container from its Dockerfile."
+    echo "        -n, --no-python-package-update  Do not update python packages."
+    echo ""
+    echo "    build_kernel -c|--config [-n|--nproc]"
+    echo "        Builds a kernel image custom-tailored for our CI."
+    echo "        -c, --config  Path to the config file."
+    echo "        -n, --nproc  Number of cores to use for building kernel."
+
+
+    echo "    build_rootfs -s|--size [--partuuid]"
+    echo "        Builds a rootfs image custom-tailored for use in our CI."
+    echo "        -s, --size      Size of the rootfs image. Defaults to 300MB.
+                                  The format is the same as that of 'truncates'."
+    echo "        -p, --partuuid  Whether to build a partuuid image."
+    echo ""
+    echo "    checkenv"
+    echo "        Performs prerequisites checks needed to execute firecracker."
+    echo ""
+    echo "    ci"
+    echo "        Run a continuous integration test run that executes the integration tests and"
+    echo "        checks that the release process works."
+    echo ""
+    echo "    create_snapshot_artifacts"
+    echo "        Runs a tool that generates snapshot artifacts for supported kernel versions."
+    echo "        Snapshot mem and state files are saved under \`snapshot_artifacts/\` directory"
+    echo ""
+    echo "    distclean"
+    echo "        Clean up the build tree and remove the docker container."
+    echo ""
+    echo "    fix_perms"
+    echo "        Fixes permissions when devtool dies in the middle of a privileged session."
+    echo ""
+    echo "    fmt"
+    echo "        Auto-format all Rust source files, to match the Firecracker requirements."
+    echo "        This should be used as the last step in every commit, to ensure that the"
+    echo "        Rust style tests pass."
+    echo ""
+    echo "    generate_syscall_tables <version>"
+    echo "        Generates the syscall tables for seccompiler, according to a given kernel version."
+    echo "        Release candidate (rc) linux versions are not allowed."
+    echo "        Outputs a rust file for each supported arch: src/seccompiler/src/syscall_table/{arch}.rs"
+    echo "        Supported architectures: x86_64 and aarch64."
+    echo ""
+    echo "    install [-p|--path] [--debug|--release]"
+    echo "      Install firecracker, jailer and seccomp binaries to /usr/local/bin or a given path."
+    echo "      Only the musl linked binaries are supported."
+    echo "        --path                Install binaries to a specified path."
+    echo "        --debug               Install the debug binaries."
+    echo "        --release             Install the release binaries. This is the default."
+    echo ""
+    echo "    help"
+    echo "        Display this help message."
+    echo ""
+    echo "    prepare_release <version>"
+    echo "        Prepare a new Firecracker release by updating the version number, crate "
+    echo "        dependencies and credits."
+    echo ""
+
+    echo ""
+    echo "    shell [--privileged]"
+    echo "        Launch the development container and open an interactive BASH shell."
+    echo "        -p, --privileged    Run the container as root, in privileged mode."
+    echo "                            Running Firecracker via the jailer requires elevated"
+    echo "                            privileges, though the build phase does not."
+    echo ""
+    echo "    tag <version>"
+    echo "        Create a git tag for the specified version. The tag message will contain "
+    echo "        the contents of CHANGELOG.md enclosed between the header corresponding to "
+    echo "        the specified version and the one corresponding to the previous version."
+    echo ""
+    echo "    test [-- [<pytest args>]]"
+    echo "        Run the Firecracker integration tests."
+    echo "        The Firecracker testing system is based on pytest. All arguments after --"
+    echo "        will be passed through to pytest."
+    echo "        -c, --cpuset-cpus cpulist    Set a dedicated cpulist to be used by the tests."
+    echo "        -m, --cpuset-mems memlist    Set a dedicated memlist to be used by the tests."
+    echo "        -r, --ramdisk size[k|m|g]    Use a ramdisk of `size` MB for
+                                               the entire test session (e.g
+                                               stored artifacts, Firecracker
+                                               binaries, logs/metrics FIFOs
+                                               and test created device files)."
+    echo ""
+    echo "    strip"
+    echo "        Strip debug symbols from the Firecracker release binaries."
+    echo ""
+}
+
 main() {
 
     if [ $# = 0 ]; then
     die "No command provided. Please use \`$0 help\` for help."
     fi
 
-    say "Successfully built rootfs!"
+    # Parse main command line args.
+    #
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help)              { cmd_help; exit 1;     } ;;
+            -y|--unattended)        { OPT_UNATTENDED=true;  } ;;
+            -*)
+                die "Unknown arg: $1. Please use \`$0 help\` for help."
+            ;;
+            *)
+                break
+            ;;
+        esac
+        shift
+    done
+
+    # $1 is now a command name. Check if it is a valid command and, if so,
+    # run it.
+    #
+    declare -f "cmd_$1" > /dev/null
+    ok_or_die "Unknown command: $1. Please use \`$0 help\` for help."
+
+    cmd=cmd_$1
+    shift
+
+    # $@ is now a list of command-specific args
+    #
+    $cmd "$@"
 }
 
 main "$@"
