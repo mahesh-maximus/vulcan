@@ -336,8 +336,19 @@ cmd_build() {
     say "Build ($profile) ..."
 }
 
+# Stats serving Python interpreter
+#
 cmd_serve() {
     say "cmd_serve"
+    run_devctr \
+        --user "$(id -u):$(id -g)" \
+        --workdir "$CTR_VC_ROOT_DIR" \
+        -- \
+        python3 "infinity.py"
+
+    ret=$? 
+
+    return $ret   
 }
 
 cmd_help() {
@@ -350,7 +361,7 @@ cmd_help() {
 main() {
 
     if [ $# = 0 ]; then
-    die "No command provided. Please use \`$0 help\` for help."
+        die "No command provided. Please use \`$0 help\` for help."
     fi
 
     # Parse main command line args.
