@@ -244,6 +244,7 @@ run_devctr() {
     # content and allow sharing between containers.
     docker run "${docker_args[@]}" \
         --rm \
+        -p 3000:3000 \
         --volume /dev:/dev \
         --volume "$VC_ROOT_DIR:$CTR_VC_ROOT_DIR:z" \
         --env OPT_LOCAL_IMAGES_PATH="$(dirname "$CTR_MICROVM_IMAGES_DIR")" \
