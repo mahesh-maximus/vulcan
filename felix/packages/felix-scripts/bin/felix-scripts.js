@@ -9,7 +9,7 @@ console.log('felix-scripts');
    throw err;
  });
 
- const spawn = require('dev-utils/crossSpawn');
+ const spawn = require('felix-dev-util/crossSpawn');
  const args = process.argv.slice(2);
  
  const scriptIndex = args.findIndex(

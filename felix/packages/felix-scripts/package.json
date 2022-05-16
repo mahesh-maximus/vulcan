@@ -5,15 +5,6 @@
     "main": "index.js",
     "author": "Mahesh",
     "license": "MIT",
-    "files": [
-        "bin",
-        "config",
-        "lib",
-        "scripts",
-        "template",
-        "template-typescript",
-        "utils"
-    ],
     "bin": {
         "felix-scripts": "./bin/felix-scripts.js"
     },
