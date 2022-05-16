@@ -1,0 +1,14 @@
+{
+    "name": "dev-utils",
+    "version": "1.0.0",
+    "description": "Vulcan UI",
+    "main": "index.js",
+    "author": "Mahesh",
+    "license": "MIT",
+    "files": [
+        "crossSpawn.js"
+    ],
+    "dependencies": {
+        "cross-spawn": "^7.0.3"
+    }
+}

@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "name": "felix",
+  "version": "1.0.0",
+  "description": "Vulcan UI",
+  "main": "index.js",
+  "author": "Mahesh",
+  "license": "MIT",
+  "scripts": {
+    "start": "cd packages/felix-scripts && node bin/felix-scripts.js start",
+    "build": "pwd"
+  }
+}

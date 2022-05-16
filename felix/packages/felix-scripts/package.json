@@ -1,0 +1,24 @@
+{
+    "name": "felix-scripts",
+    "version": "1.0.0",
+    "description": "Vulcan UI",
+    "main": "index.js",
+    "author": "Mahesh",
+    "license": "MIT",
+    "files": [
+        "bin",
+        "config",
+        "lib",
+        "scripts",
+        "template",
+        "template-typescript",
+        "utils"
+    ],
+    "bin": {
+        "felix-scripts": "./bin/felix-scripts.js"
+    },
+    "dependencies": {
+        "cross-spawn": "^7.0.3",
+        "webpack": "^5.72.1"
+    }
+}
