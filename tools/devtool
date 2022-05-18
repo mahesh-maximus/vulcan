@@ -352,6 +352,15 @@ cmd_serve() {
     return $ret   
 }
 
+cmd_remove_node_modules() {
+    say_warn 'Requires elevated privileges to remove all Node Modules!'
+    say "Are you sure you want delete all the node modules in: $VC_ROOT_DIR/felix"
+    get_user_confirmation || die "Aborted."
+
+    cd "$VC_ROOT_DIR/felix"
+    sudo find -name "node_modules" -exec rm -rf {} +
+}
+
 cmd_help() {
     echo ""
     echo "Vulcan $(basename $0)"
