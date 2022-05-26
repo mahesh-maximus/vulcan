@@ -24,6 +24,9 @@ VC_DEVCTR_DIR="${VC_ROOT_DIR}/tools/devctr"
 # Full path to the Firecracker sources dir, as bind-mounted in the container.
 CTR_VC_ROOT_DIR="/valcan"
 
+# Name of the devctr.
+VC_DEVCTR_NAME="MAGNUS"
+
 # Send a decorated message to stdout, followed by a new line
 #
 say() {
@@ -243,6 +246,7 @@ run_devctr() {
     # Use 'z' on the --volume parameter for docker to automatically relabel the
     # content and allow sharing between containers.
     docker run "${docker_args[@]}" \
+        --name "$VC_DEVCTR_NAME" \
         --rm \
         -p 3000:3000 \
         --volume /dev:/dev \
@@ -359,6 +363,10 @@ cmd_remove_node_modules() {
 
     cd "$VC_ROOT_DIR/felix"
     sudo find -name "node_modules" -exec rm -rf {} +
+}
+
+cmd_exec_shell() {
+    docker exec -it "$VC_DEVCTR_NAME"  bash
 }
 
 cmd_help() {
